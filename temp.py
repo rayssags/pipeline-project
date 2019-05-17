@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from astropy.io.fits import fits
+#from astropy.io.fits import fits
+import astropy
 import glob
 import os.path
 import pandas as pd
@@ -8,8 +9,8 @@ import os
 
 ''' Variáveis locais do pipeline '''
 
-#diretorio_script = os.path.dirname(__file__)
-diretorio_script =  os.getcwd()
+diretorio_script = os.path.dirname(__file__)
+#diretorio_script =  os.getcwd()
 diretorio_temporario = os.path.join(diretorio_script, 'temp')
 diretorio_arquivos = os.path.join(diretorio_script, 'data')
 
@@ -33,7 +34,7 @@ if not os.path.isfile(arquivo_auxiliar): #<-------------------------------------
 ''' Cria o arquivo temporário '''
 def agrupar(aquivo_fits):
 	df = pd.DataFrame(columns=['tipo_imagem', 'filtro', 'tempo_exposicao', 'caminho_arquivo'])
-	hdu = fits.open(arquivo_fits)
+	hdu = astropy.io.fits.open(arquivo_fits)
 	header = hdu[0].header
 	hdu.close()
 	df.at[0, 'tipo_imagem'] = header['OBJECT']
