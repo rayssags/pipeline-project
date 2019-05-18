@@ -12,7 +12,9 @@ import numpy as np
 ''' Variáveis locais do pipeline '''
 
 diretorio_script = os.path.dirname(__file__)
+print('1', diretorio_script)
 #diretorio_script =  os.getcwd()
+#print('2,', diretorio_script)
 diretorio_temporario = os.path.join(diretorio_script, 'temp')
 diretorio_arquivos = os.path.join(diretorio_script, 'data')
 
