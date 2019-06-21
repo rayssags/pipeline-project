@@ -38,20 +38,26 @@ diretorio_atual =  os.getcwd()
 print('Executando em {}'.format(diretorio_atual))
 
 # verificação da existência de alguns diretórios; caso não existam, são criados
+#	diretorio temporário que pode ser deletado ao final da execução
 diretorio_temporario = os.path.join(diretorio_atual, 'temp')
-# diretorio temporário que pode ser deletado ao final da execução
-try:
-    os.mkdir(diretorio_temporario)
-except FileExistsError:
-    pass
 
+def temp_dir():
+	try:
+		os.mkdir(diretorio_temporario)
+		return diretorio_temporario
+	except FileExistsError:
+		pass
+	return
+
+#	diretorio de saida das imagens tratadas
 diretorio_output = os.path.join(diretorio_atual, 'output')
-# diretorio de saida das imagens tratadas
-try:
-    os.mkdir(diretorio_output)
-except FileExistsError:
-    pass
 
+def output_dir():
+	try:
+		os.mkdir(diretorio_output)
+	except FileExistsError:
+		pass	
+	return
 # localização do arquivo com a informação dos headers
 arquivo_auxiliar = os.path.join(diretorio_temporario, 'informacao_headers.csv')
 
@@ -73,6 +79,7 @@ def agrupar_arquivos(arquivo_fits, arquivo_auxiliar):
 	Returns:
 	arquivo_auxiliar (str) 
 	"""
+
 	# inicia um dataframe com colunas das informações a serem coletadas do header do fits
 	df = pd.DataFrame(columns=['tipo_imagem', 'filtro', 'tempo_exposicao', 'caminho_arquivo'])
 
@@ -103,6 +110,9 @@ def criar_arquivo_auxiliar():
 	O default é o diretório onde o código está sendo rodado.
 	"""
 
+	# verifica a existencia do diretorio temporario
+	temp_dir()
+
 	# indicação do diretório onde estão os arquivos
 	questions = [inquirer.List('dir',
 	message="O diretório de arquivos é o diretório atual?", choices=['Sim', 'Não'])]
@@ -124,8 +134,9 @@ def master_bias():
 	"""Essa função cria um master bias com todos os arquivos fits que tem a
 	classificação `zero` no arquivo auxiliar
 	Esses arquivos são combinados através da mediana."""
-	print("---------------------\nMaster bias\n---------------------")
+	print("--------------------------- Master bias ---------------------------")
 	print("Criando o master bias")
+
 	# checa a existência do arquivo auxiliar
 	try:
 		arquivo_auxiliar_dados = pd.read_csv(arquivo_auxiliar)
@@ -150,7 +161,7 @@ def master_flat():
 	classificação `flat` no arquivo auxiliar.
 	Os arquivos de flat são corrigidos pelo master bias, depois combinados pela
 	mediana e por fim são normalizados pela média."""
-	print("---------------------\nMaster flat\n---------------------")
+	print("--------------------------- Master flat ---------------------------")
 	# checa a existência do arquivo auxiliar
 	try:
 		arquivo_auxiliar_dados = pd.read_csv(arquivo_auxiliar)
@@ -174,32 +185,24 @@ def master_flat():
 	arquivos = flats.loc[flats['tempo_exposicao'] == tempo_exposicao, 'caminho_arquivo']
 	imagens = list(map(lambda x: fits.open(x)[0].data, arquivos))
 
-	print('Corrigindo de bias e combinando pela mediana')
-	master_flat_data = np.median(imagens - master_bias_data, axis = 0) 
-	
-	print('Normalizando')
-	master_flat_data_normalizado = master_flat_data/np.mean(master_flat_data)
-	master_flat_hdu = fits.PrimaryHDU(master_flat_data_normalizado)
-	
-	print("Salvando")
+	master_flat_data = np.median(list(map(lambda x: x/np.mean(x), tqdm(imagens - master_bias_data, ascii=False, desc='Corrigindo bias, normalizando e combinando pela mediana'))), axis = 0) 
+	master_flat_hdu = fits.PrimaryHDU(master_flat_data)	
+	print("Salvando o master flat")
 	master_flat_caminho = os.path.join(diretorio_temporario, 'masterflat_norm_{}.fits'.format(tempo_exposicao))
 	master_flat_hdu.writeto(master_flat_caminho, overwrite=True)	
 	del master_flat_hdu
-	print('Fim')
 
 
 
-def imagens_ciencia(salvar = True, combinar = True):
-	"""Essa função corrige e salva cada uma das imagens de ciência -- imagens
-	que tem a classificação `XO-2b` no arquivo auxiliar.
+def imagens_ciencia():
+	"""Essa função corrige e salva cada uma das imagens de ciência com base
+	em tempo de exposição. Essas imagens tem a classificação `XO-2b` no arquivo auxiliar.
 	As imagens são subtraídas de bias e divididas pelo flat.
-	
-	Args:
-	salvar (bool): Salvar imagens corrigidas individuais.
-	combinar (bool): Salvar imagem final combinada.
 	"""
-	print("---------------------\nImagens de ciência\n---------------------")
-
+	print("----------------------- Imagens de ciência ------------------------")
+	
+	# cria o diretorio de output
+	output_dir()
 	# checa a existência do arquivo auxiliar
 	try:
 		arquivo_auxiliar_dados = pd.read_csv(arquivo_auxiliar)
@@ -231,17 +234,12 @@ def imagens_ciencia(salvar = True, combinar = True):
 		imagem = fits.open(caminho)[0].data
 		imagem = imagem - master_bias_data
 		imagem = imagem/master_flat_data
-		if salvar == True:
-			ciencia_hdu = fits.PrimaryHDU(imagem)
-			caminho_imagem = diretorio_output + '/' + caminho.split('/')[-1].replace('.fits', '_corrigida.fits')
-			ciencia_hdu.writeto(caminho_imagem, overwrite=True)	
-			del ciencia_hdu
-		return imagem
+		ciencia_hdu = fits.PrimaryHDU(imagem)
+		caminho_imagem = diretorio_output + '/' + caminho.split('/')[-1].replace('.fits', '_corrigida.fits')
+		ciencia_hdu.writeto(caminho_imagem, overwrite=True)	
+		del ciencia_hdu
 	arquivos = ciencia_imgs.loc[ciencia_imgs['tempo_exposicao'] == tempo_exposicao, 'caminho_arquivo']
-	imagens = list(map(corrigir_ciencia, tqdm(arquivos, ascii=False, desc='Corrigindo as imagens de ciência')))
-	if combinar == True:
-		print("Salvando imagem combinada")
-		fits.PrimaryHDU(np.sum(imagens, axis = 0)).writeto(os.path.join(diretorio_output, 'ciencia_{}.fits'.format(tempo_exposicao)), overwrite= True)
+	imagens = list(map(corrigir_ciencia, tqdm(arquivos, ascii=False, desc='Corrigindo bias e dividindo pelo flat')))
 	del imagens
 	return
 
@@ -249,15 +247,14 @@ def limpar():
 	"""Essa função deleta o diretório de arquivos temporários."""
 	shutil.rmtree(diretorio_temporario)
 	
-def run_pipeline(salvar_imagens = True, manter_temp = False):
+def run_pipeline(manter_temp = False):
 	"""Essa função executa um pipeline.
 	
 	Args:
-	salvar_imagens (bool): Salvar imagens de ciência individuais. O default é True
 	manter_temp (bool): Manter arquivos temporários. O default é False.
 	"""
 	criar_arquivo_auxiliar()
 	master_bias()
 	master_flat()
-	imagens_ciencia(salvar=salvar_imagens)
+	imagens_ciencia()
 	if manter_temp == False: limpar()
